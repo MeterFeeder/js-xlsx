@@ -235,3 +235,151 @@ if (typeof ArrayBuffer !== 'undefined' && !ArrayBuffer.prototype.slice) {
     return target;
   };
 }
+
+// https://github.com/davidchambers/Base64.js
+// (C) 2015 David Chambers
+// Base64.js may be freely distributed under the Apache 2.0 License.
+;(function () {
+
+  var object =
+    typeof exports != 'undefined' ? exports :
+    typeof self != 'undefined' ? self : // #8: web workers
+    $.global; // #31: ExtendScript
+
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+
+  function InvalidCharacterError(message) {
+    this.message = message;
+  }
+  InvalidCharacterError.prototype = new Error;
+  InvalidCharacterError.prototype.name = 'InvalidCharacterError';
+
+  // encoder
+  // [https://gist.github.com/999166] by [https://github.com/nignag]
+  object.btoa || (
+  object.btoa = function (input) {
+    var str = String(input);
+    for (
+      // initialize result and counter
+      var block, charCode, idx = 0, map = chars, output = '';
+      // if the next str index does not exist:
+      //   change the mapping table to "="
+      //   check if d has no fractional digits
+      str.charAt(idx | 0) || (map = '=', idx % 1);
+      // "8 - idx % 1 * 8" generates the sequence 2, 4, 6, 8
+      output += map.charAt(63 & block >> 8 - idx % 1 * 8)
+    ) {
+      charCode = str.charCodeAt(idx += 3/4);
+      if (charCode > 0xFF) {
+        throw new InvalidCharacterError("'btoa' failed: The string to be encoded contains characters outside of the Latin1 range.");
+      }
+      block = block << 8 | charCode;
+    }
+    return output;
+  });
+
+  // decoder
+  // [https://gist.github.com/1020396] by [https://github.com/atk]
+  object.atob || (
+  object.atob = function (input) {
+    var str = String(input).replace(/[=]+$/, ''); // #31: ExtendScript bad parse of /=
+    if (str.length % 4 == 1) {
+      throw new InvalidCharacterError("'atob' failed: The string to be decoded is not correctly encoded.");
+    }
+    for (
+      // initialize result and counters
+      var bc = 0, bs, buffer, idx = 0, output = '';
+      // get next character
+      buffer = str.charAt(idx++);
+      // character found in table? initialize bit storage and add its ascii value;
+      ~buffer && (bs = bc % 4 ? bs * 64 + buffer : buffer,
+        // and if not first of each 4 characters,
+        // convert the first 8 bits to one ascii character
+        bc++ % 4) ? output += String.fromCharCode(255 & bs >> (-2 * bc & 6)) : 0
+    ) {
+      // try to find character in table (0-63, not found => -1)
+      buffer = chars.indexOf(buffer);
+    }
+    return output;
+  });
+}());
+
+
+// From https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toISOString
+if (!Date.prototype.toISOString) {
+  (function() {
+
+    function pad(number) {
+      if (number < 10) {
+        return '0' + number;
+      }
+      return number;
+    }
+
+    Date.prototype.toISOString = function() {
+      return this.getUTCFullYear() +
+        '-' + pad(this.getUTCMonth() + 1) +
+        '-' + pad(this.getUTCDate()) +
+        'T' + pad(this.getUTCHours()) +
+        ':' + pad(this.getUTCMinutes()) +
+        ':' + pad(this.getUTCSeconds()) +
+        '.' + (this.getUTCMilliseconds() / 1000).toFixed(3).slice(2, 5) +
+        'Z';
+    };
+
+  }());
+}
+
+// note: MDN shim will not work in IE
+if(typeof Uint8Array !== 'undefined' && !Uint8Array.prototype.slice) Uint8Array.prototype.slice = function(start, end) {
+	if(start < 0) { start += this.length; if(start < 0) start = 0; }
+	if(start >= this.length) return new Uint8Array(0);
+	if(end == null) end = this.length;
+	if(end < 0) { end += this.length; if(end < 0) end = 0; }
+	if(end > this.length) end = this.length;
+	var out = new Uint8Array(end - start);
+	while(start <= --end) out[end - start] = this[end];
+	return out;
+};
+
+// VBScript + ActiveX fallback for IE5+
+var IE_SaveFile = (function() { try {
+	if(typeof IE_SaveFile_Impl == "undefined") document.write([
+'<script type="text/vbscript" language="vbscript">',
+'IE_GetProfileAndPath_Key = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders\\"',
+'Function IE_GetProfileAndPath(key): Set wshell = CreateObject("WScript.Shell"): IE_GetProfileAndPath = wshell.RegRead(IE_GetProfileAndPath_Key & key): IE_GetProfileAndPath = wshell.ExpandEnvironmentStrings("%USERPROFILE%") & "!" & IE_GetProfileAndPath: End Function',
+'Function IE_SaveFile_Impl(FileName, payload): Dim data, plen, i, bit: data = CStr(payload): plen = Len(data): Set fso = CreateObject("Scripting.FileSystemObject"): fso.CreateTextFile FileName, True: Set f = fso.GetFile(FileName): Set stream = f.OpenAsTextStream(2, 0): For i = 1 To plen Step 3: bit = Mid(data, i, 2): stream.write Chr(CLng("&h" & bit)): Next: stream.Close: IE_SaveFile_Impl = True: End Function',
+'|/script>'.replace("|","<")
+	].join("\r\n"));
+	if(typeof IE_SaveFile_Impl == "undefined") return void 0;
+	var IE_GetPath = (function() {
+		var DDP1 = "";
+		try { DDP1 = IE_GetProfileAndPath("{374DE290-123F-4565-9164-39C4925E467B}"); } catch(e) { try { DDP1 = IE_GetProfileAndPath("Personal"); } catch(e) { try { DDP1 = IE_GetProfileAndPath("Desktop"); } catch(e) { throw e; }}}
+		var o = DDP1.split("!");
+		DDP = o[1].replace("%USERPROFILE%", o[0]);
+		return function(path) { return DDP + "\\" + path; };
+	})();
+	function fix_data(data) {
+		var out = [];
+		var T = typeof data == "string";
+		for(var i = 0; i < data.length; ++i) out.push(("00"+(T ? data.charCodeAt(i) : data[i]).toString(16)).slice(-2));
+		var o = out.join("|");
+		return o;
+	}
+	return function(data, filename) { return IE_SaveFile_Impl(IE_GetPath(filename), fix_data(data)); };
+} catch(e) { return void 0; }})();
+var IE_LoadFile = (function() { try {
+	if(typeof IE_LoadFile_Impl == "undefined") document.write([
+'<script type="text/vbscript" language="vbscript">',
+'Function IE_LoadFile_Impl(FileName): Dim out(), plen, i, cc: Set fso = CreateObject("Scripting.FileSystemObject"): Set f = fso.GetFile(FileName): Set stream = f.OpenAsTextStream(1, 0): plen = f.Size: ReDim out(plen): For i = 1 To plen Step 1: cc = Hex(Asc(stream.read(1))): If Len(cc) < 2 Then: cc = "0" & cc: End If: out(i) = cc: Next: IE_LoadFile_Impl = Join(out,""): End Function',
+'|/script>'.replace("|","<")
+	].join("\r\n"));
+	if(typeof IE_LoadFile_Impl == "undefined") return void 0;
+	function fix_data(data) {
+		var out = [];
+		for(var i = 0; i < data.length; i+=2) out.push(String.fromCharCode(parseInt(data.slice(i, i+2), 16)));
+		var o = out.join("");
+		return o;
+	}
+	return function(filename) { return fix_data(IE_LoadFile_Impl(filename)); };
+} catch(e) { return void 0; }})();

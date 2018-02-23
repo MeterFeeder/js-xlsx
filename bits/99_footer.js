@@ -1,2 +1,3 @@
 })(typeof exports !== 'undefined' ? exports : XLSX);
-var XLS = XLSX;
+/*exported XLS, ODS */
+var XLS = XLSX, ODS = XLSX;
